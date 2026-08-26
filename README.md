@@ -137,7 +137,7 @@ $ falcon-cli check
 These need **no credentials** — the catalog is read from the installed `falcon-mcp` package:
 
 ```console
-$ falcon-cli modules                      # the 27 capability modules
+$ falcon-cli modules                      # the capability modules (27 upstream + 2 extras)
 $ falcon-cli tools                        # all tools, grouped by module
 $ falcon-cli tools --module hosts         # one module
 $ falcon-cli tools --search vulnerab      # keyword search over names/descriptions
@@ -227,6 +227,70 @@ $ falcon-cli call falcon_search_hosts filter="platform_name:'Windows'+last_seen:
 
 Global options (before the subcommand): `--base-url`, `--member-cid`, `--proxy`, `--profile`, `--debug`.
 
+## Fusion SOAR & Foundry extras
+
+Upstream's `fusion` module covers searching workflow definitions/executions, reading results, and executing workflows. `falcon-cli` extends this with three **extra modules** (implemented here, in `falcon_mcp_cli/extras/`, following the upstream module pattern) for the rest of the Fusion/Foundry/automation surface:
+
+**`workflows` module — the full workflow lifecycle** (scopes: `Workflow: Read` / `Workflow: Write`):
+
+```console
+# Export a workflow to YAML, edit it, import it back as a new workflow
+$ falcon-cli call falcon_search_workflow_definitions filter="name.raw:*'*Containment*'"
+$ falcon-cli call falcon_export_workflow id=<definition-id> | jq -r .yaml > wf.yaml
+$ falcon-cli call falcon_import_workflow yaml="$(cat wf.yaml)" name="Containment v2" validate_only:=true
+$ falcon-cli call falcon_import_workflow yaml="$(cat wf.yaml)" name="Containment v2"
+
+# Modify in place (full-model update), enable/disable/cancel, or delete
+$ falcon-cli call falcon_update_workflow --input @definition.json
+$ falcon-cli call falcon_workflow_definition_action action_name=disable ids:='["<definition-id>"]'
+$ falcon-cli call falcon_delete_workflow ids:='["<definition-id>"]'
+
+# System workflow definitions (the templates apps/integrations ship)
+$ falcon-cli call falcon_provision_system_workflow --input @template.json
+$ falcon-cli call falcon_promote_system_workflow --input @template-v2.json
+$ falcon-cli call falcon_deprovision_system_workflow definition_id=<id>
+
+# The building blocks: activities (the "functions" a workflow can call —
+# including your deployed Foundry functions) and triggers
+$ falcon-cli call falcon_search_workflow_activities filter="name:*'*ticket*'"
+$ falcon-cli call falcon_search_workflow_triggers
+
+# Test runs, resume/retry, and human-input approvals
+$ falcon-cli call falcon_mock_execute_workflow definition_id=<id> --input '{"payload": {"mocks": {...}}}'
+$ falcon-cli call falcon_workflow_execution_action action_name=resume ids:='["<execution-id>"]'
+$ falcon-cli call falcon_get_workflow_human_inputs ids:='["<input-id>"]'
+$ falcon-cli call falcon_update_workflow_human_input id=<input-id> input=approve
+```
+
+**`foundry` module — the Foundry platform APIs** (scopes: `Custom Storage: Read/Write`, `Foundry Platform`, `API Integrations`):
+
+```console
+$ falcon-cli call falcon_list_foundry_collections               # custom-storage collections
+$ falcon-cli call falcon_search_foundry_objects collection_name=mycol filter="status:'open'"
+$ falcon-cli call falcon_put_foundry_object collection_name=mycol object_key=k1 data:='{"a":1}'
+$ falcon-cli call falcon_list_foundry_repos                     # LogScale repos/views
+$ falcon-cli call falcon_run_foundry_search query='#event_simpleName=*' repo_or_view=search-all start=1h
+$ falcon-cli call falcon_list_api_integrations                  # third-party API plugins
+$ falcon-cli call falcon_upload_foundry_lookup_file name=blocklist.csv content="$(cat blocklist.csv)"
+```
+
+**`rtradmin` module — RTR content library for response automation** (scopes: `Real Time Response Admin: Read/Write`):
+
+```console
+# Version the custom scripts and put-files your response workflows invoke
+$ falcon-cli call falcon_create_rtr_script name=Isolate description="..." content="$(cat isolate.ps1)" platform=windows permission_type=group
+$ falcon-cli call falcon_list_rtr_scripts filter="name:*'*isolate*'"
+$ falcon-cli call falcon_create_rtr_put_file name=tool.exe description="..." content="$(cat tool.exe)"
+```
+
+These manage the reusable content library; actually running a script or staging a put-file onto a host happens in an RTR *session* (upstream's `rtr` module).
+
+### On building full Fusion apps
+
+These tools cover the API-driven parts of the Fusion/Foundry app lifecycle: **workflow templates** (create/export/import/update/provision/promote/deprovision), the **collections, lookup files, API integrations, and RTR content** an app bundles, and running/testing it all. What has **no public API** — and so still requires CrowdStrike's own `foundry` CLI and the console — is packaging and publishing an app itself: Foundry **function code** (build/deploy), UI extensions/pages, and app manifest/release management. In practice: author and deploy function code and the app shell with the `foundry` CLI, then use `falcon-cli` to build, wire up, version, and operate everything the app orchestrates. When CrowdStrike ships public app-packaging APIs, they slot into `extras/` the same way these did.
+
+The extras follow the same safety model as everything else: `[writes]`/`[DESTRUCTIVE]` flags, the read-only guardrail, and confirmation prompts all apply. If upstream falcon-mcp later ships equivalent tools, the upstream versions win automatically and the extras get retired.
+
 ## Kiro integration
 
 This repo ships a [Kiro](https://kiro.dev) integration under [`integrations/kiro/`](integrations/kiro/):
@@ -238,7 +302,7 @@ See [integrations/kiro/README.md](integrations/kiro/README.md) for details. (Cla
 
 ## How it relates to upstream falcon-mcp
 
-This project contains **no Falcon API logic of its own**. All tool implementations, parameter schemas, FQL guides, and error handling come from [`falcon-mcp`](https://github.com/CrowdStrike/falcon-mcp) (MIT licensed, by CrowdStrike), installed as a regular Python dependency. This wrapper adds:
+Nearly all tool implementations, parameter schemas, FQL guides, and error handling come from [`falcon-mcp`](https://github.com/CrowdStrike/falcon-mcp) (MIT licensed, by CrowdStrike), installed as a regular Python dependency. The one exception is the [Fusion/Foundry extras](#fusion-soar--foundry-extras): thin modules built on the same upstream base classes and FalconPy operations, covering capabilities upstream doesn't ship yet (they defer to upstream if it ever claims the same names). Beyond that, this wrapper adds:
 
 - an argparse CLI (`falcon-cli`) exposing the catalog and in-process tool execution,
 - credential-free catalog browsing (tools, schemas, guides),
