@@ -57,15 +57,36 @@ $ falcon-cli tools --module hosts
 
 ## Configuration
 
-Credentials come from environment variables or a `.env` file in the working directory (real environment variables win over `.env`).
+### Sign in with your browser (recommended)
+
+```console
+$ falcon-cli login
+```
+
+Like the CrowdStrike Foundry CLI's `foundry login`, this starts a local callback server and opens your browser to a sign-in form. The form deep-links to the Falcon console's **API clients and keys** page for your region — create (or reuse) an API client there, paste its ID and secret, and submit. The credentials are **validated live against the Falcon API before anything is saved**, then stored as a named profile in `~/.config/falcon-cli/credentials.json` (file mode `0600`).
+
+- `falcon-cli login --region eu-1` — pick your CrowdStrike region (`us-1`, `us-2`, `eu-1`, `us-gov-1`).
+- `falcon-cli login --profile prod --set-default` — store multiple tenants as named profiles; switch per-command with `falcon-cli --profile prod call …` or `FALCON_CLI_PROFILE=prod`.
+- `falcon-cli login --manual` — terminal-only prompts for headless machines (secret read without echo).
+- `falcon-cli login --no-browser` — prints the local URL instead of auto-opening a browser (SSH port-forwarding setups).
+- `falcon-cli profiles` — list stored profiles (secrets never displayed); `falcon-cli logout [NAME|--all]` removes them.
+
+The local form is loopback-only, single-use (a random token gates every request), and shuts down as soon as credentials are saved or after 10 minutes.
+
+> **Why paste credentials at all?** Foundry's login can end-to-end provision an API client because the Falcon console has a dedicated authorize flow for it. The public Falcon API offers no equivalent for third-party tools — API clients must be created in the console — so `falcon-cli login` automates everything around that step: opening the right console page, validating the pasted credentials, and storing them safely.
+
+### Environment variables
+
+Environment variables override stored profiles (except when a profile is explicitly selected with `--profile`/`FALCON_CLI_PROFILE`, which wins). A `.env` file in the working directory also works (real environment variables win over `.env`).
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `FALCON_CLIENT_ID` | for `call`/`check` | Falcon API client ID |
-| `FALCON_CLIENT_SECRET` | for `call`/`check` | Falcon API client secret |
+| `FALCON_CLIENT_ID` | if not logged in | Falcon API client ID |
+| `FALCON_CLIENT_SECRET` | if not logged in | Falcon API client secret |
 | `FALCON_BASE_URL` | no | API base URL for your region (default `https://api.crowdstrike.com`) |
 | `FALCON_MEMBER_CID` | no | Child CID for Flight Control (MSSP) parent tenants |
 | `FALCON_PROXY_URL` | no | HTTPS proxy for outbound Falcon API calls |
+| `FALCON_CLI_PROFILE` | no | Name of a stored login profile to use |
 | `FALCON_CLI_READ_ONLY` | no | `true` refuses any tool that modifies tenant state |
 
 `FALCON_BASE_URL` by region:
@@ -78,6 +99,8 @@ Credentials come from environment variables or a `.env` file in the working dire
 | US-GOV-1 | `https://api.laggar.gcw.crowdstrike.com` |
 
 ### Creating a Falcon API client
+
+`falcon-cli login` walks you through this in the browser. Doing it by hand:
 
 1. In the Falcon console, go to **Support and resources** → **API clients and keys**.
 2. Create an API client and grant it the scopes for the capabilities you plan to use (e.g. `Hosts: Read`, `Alerts: Read`, `Vulnerabilities: Read`). The upstream project documents [the scopes each module needs](https://github.com/CrowdStrike/falcon-mcp#api-scopes).
@@ -92,7 +115,8 @@ $ falcon-cli check
 {
   "connected": true,
   "base_url": "https://api.crowdstrike.com",
-  "member_cid": null
+  "member_cid": null,
+  "credential_source": "profile:default"
 }
 ```
 
@@ -179,6 +203,9 @@ $ falcon-cli call falcon_search_hosts filter="platform_name:'Windows'+last_seen:
 
 | Command | Credentials | Description |
 |---|---|---|
+| `falcon-cli login [--region R] [--profile NAME] [--manual] [--no-browser] [--set-default]` | creates them | Browser-based sign-in; stores a validated credential profile |
+| `falcon-cli logout [NAME\|--all]` | no | Remove stored profile(s) |
+| `falcon-cli profiles [--json]` | no | List stored profiles (secrets never shown) |
 | `falcon-cli modules` | no | List capability modules |
 | `falcon-cli tools [--module M] [--search K] [--read-only] [--json]` | no | List tools |
 | `falcon-cli describe TOOL` | no | Full description + parameter JSON schema |
@@ -188,7 +215,7 @@ $ falcon-cli call falcon_search_hosts filter="platform_name:'Windows'+last_seen:
 | `falcon-cli check` | **yes** | Verify connectivity and credentials |
 | `falcon-cli version` | no | Wrapper + upstream package versions |
 
-Global options (before the subcommand): `--base-url`, `--member-cid`, `--proxy`, `--debug`.
+Global options (before the subcommand): `--base-url`, `--member-cid`, `--proxy`, `--profile`, `--debug`.
 
 ## Kiro integration
 

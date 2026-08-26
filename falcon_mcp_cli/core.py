@@ -175,8 +175,13 @@ def build_client(
     proxy: str | None = None,
     debug: bool = False,
     user_agent_comment: str | None = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
 ) -> FalconClient:
     """Create and authenticate a Falcon API client.
+
+    ``client_id``/``client_secret`` override the FALCON_CLIENT_ID /
+    FALCON_CLIENT_SECRET environment variables (used for stored login profiles).
 
     Raises:
         UsageError: credentials are missing entirely.
@@ -188,11 +193,16 @@ def build_client(
             base_url=base_url,
             debug=debug,
             user_agent_comment=comment,
+            client_id=client_id,
+            client_secret=client_secret,
             member_cid=member_cid,
             proxy=proxy,
         )
     except ValueError as exc:  # missing FALCON_CLIENT_ID / FALCON_CLIENT_SECRET
-        raise UsageError(str(exc)) from exc
+        raise UsageError(
+            f"{exc} Alternatively, run `falcon-cli login` to sign in via your "
+            "browser and store a credential profile."
+        ) from exc
 
     if not client.authenticate():
         raise AuthFailure(client.auth_failure_message())

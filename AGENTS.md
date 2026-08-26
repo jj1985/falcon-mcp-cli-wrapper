@@ -9,7 +9,7 @@
 3. **If the tool takes a `filter` parameter, read its FQL guide first.** The tool description names a `falcon://.../fql-guide` resource; print it with `falcon-cli guide <uri>`. This matters because an unsupported filter field returns an **empty result, not an error** — indistinguishable from a genuine no-match. Compose filters only from fields the guide lists.
 4. **Call it.** `falcon-cli call <tool_name> key=value key2:=5 …` and parse the JSON from stdout.
 
-Steps 1–3 need no credentials; step 4 requires `FALCON_CLIENT_ID` and `FALCON_CLIENT_SECRET` in the environment (or a `.env` file in the working directory).
+Steps 1–3 need no credentials. Step 4 needs credentials from one of: `FALCON_CLIENT_ID` + `FALCON_CLIENT_SECRET` in the environment (or a `.env` file in the working directory), or a profile stored by the human via `falcon-cli login` (list with `falcon-cli profiles`; select with `--profile NAME` or `FALCON_CLI_PROFILE`). `falcon-cli check` reports which source is active as `credential_source`. If no credentials exist, tell the user to run `falcon-cli login` — do not attempt the browser login yourself; it requires a human in the loop.
 
 ## Passing parameters
 
@@ -44,7 +44,7 @@ falcon-cli call falcon_search_hosts filter='hostname:"PC-*"' limit:=10
 falcon-cli call falcon_search_detections --input '{"filter":"severity_name:'\''High'\''","limit":5}'
 ```
 
-Common environment variables: `FALCON_CLIENT_ID`, `FALCON_CLIENT_SECRET` (required for `call`/`check`); `FALCON_BASE_URL` (non-US-1 regions); `FALCON_CLI_READ_ONLY=true` (guardrail). Full list in [README.md](README.md#configuration).
+Common environment variables: `FALCON_CLIENT_ID`, `FALCON_CLIENT_SECRET` (needed for `call`/`check` unless a login profile is stored); `FALCON_BASE_URL` (non-US-1 regions); `FALCON_CLI_PROFILE` (select a stored profile); `FALCON_CLI_READ_ONLY=true` (guardrail). Full list in [README.md](README.md#configuration).
 
 ## FQL essentials
 

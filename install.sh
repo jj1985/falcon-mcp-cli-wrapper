@@ -138,11 +138,12 @@ cat <<'EOF'
 
 falcon-cli is ready. Next steps:
 
-  1. Create a Falcon API client (Falcon console -> Support and resources ->
-     API clients and keys) and export its credentials:
+  1. Sign in (opens your browser, stores a validated credential profile):
+         falcon-cli login
+     Or export credentials manually:
          export FALCON_CLIENT_ID=...
          export FALCON_CLIENT_SECRET=...
-     Non-US-1 regions also need FALCON_BASE_URL (see README).
+     Non-US-1 regions: use `falcon-cli login --region ...` or FALCON_BASE_URL.
 
   2. Verify:            falcon-cli check
   3. Explore (no credentials needed):
