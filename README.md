@@ -21,11 +21,21 @@ Requires Python 3.11+ (or [uv](https://docs.astral.sh/uv/), which provisions one
 
 **Quick install (recommended):**
 
+macOS / Linux:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jj1985/falcon-mcp-cli-wrapper/main/install.sh | bash
 ```
 
-The script picks the best available installer (uv → pipx → `pip install --user`), verifies the install, and — when [Kiro CLI](https://kiro.dev/docs/cli/) is detected — also sets up the `falcon` Kiro agent (skip with `--no-kiro`, force with `--kiro`; `--uninstall` removes everything; `--help` for all options).
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/jj1985/falcon-mcp-cli-wrapper/main/install.ps1 | iex
+```
+
+Both scripts pick the best available installer (uv → pipx → `pip install --user`), verify the install, and — when [Kiro CLI](https://kiro.dev/docs/cli/) is detected — also set up the `falcon` Kiro agent. Options (`--no-kiro`/`-NoKiro`, `--kiro`/`-Kiro`, `--ref`/`-Ref`, `--uninstall`/`-Uninstall`) work the same in both; for the PowerShell options, download first (`irm …/install.ps1 -OutFile install.ps1`) then run `./install.ps1 -Kiro` etc. If neither Python 3.11+ nor uv is present on Windows, install uv first: `winget install astral-sh.uv`.
+
+Everything is cross-platform: on Windows, login profiles are stored under `%APPDATA%\falcon-cli\` and all commands work the same in PowerShell or cmd.
 
 **Manual install:**
 
