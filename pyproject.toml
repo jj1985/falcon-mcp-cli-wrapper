@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "falcon-mcp-cli"
+version = "0.1.0"
+description = "Command-line wrapper around the CrowdStrike Falcon MCP server: every Falcon MCP tool as a shell command"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "falcon-mcp-cli-wrapper contributors" }
+]
+keywords = ["crowdstrike", "falcon", "cli", "mcp", "security"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+]
+dependencies = [
+    "falcon-mcp>=0.17.0,<1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.5.0",
+]
+
+[project.scripts]
+falcon-cli = "falcon_mcp_cli.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jj1985/falcon-mcp-cli-wrapper"
+Upstream = "https://github.com/CrowdStrike/falcon-mcp"
+
+[tool.setuptools.packages.find]
+include = ["falcon_mcp_cli*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
