@@ -15,7 +15,7 @@ import os
 import sys
 from typing import Any
 
-from falcon_mcp_cli import __version__
+from falcon_mcp_cli import __version__, auth
 from falcon_mcp_cli.core import (
     AuthFailure,
     Catalog,
@@ -95,13 +95,45 @@ def _print_json(data: Any, compact: bool = False) -> None:
         print(json.dumps(data, indent=2, default=str))
 
 
+def resolve_credentials(args: argparse.Namespace) -> tuple[dict[str, Any], str | None]:
+    """Pick the credential source: explicit profile > environment > default profile.
+
+    Returns (credentials, source) where credentials may be empty (letting
+    FalconClient fall back to FALCON_CLIENT_ID/FALCON_CLIENT_SECRET) and source
+    describes what was used ("environment", "profile:NAME", or None).
+    """
+    explicit = getattr(args, "profile", None) or os.environ.get("FALCON_CLI_PROFILE")
+    if explicit:
+        found = auth.get_profile(explicit)
+        if found is None:
+            raise UsageError(
+                f"No stored profile named {explicit!r}. Run `falcon-cli login "
+                f"--profile {explicit}` to create it, or `falcon-cli profiles` to list them."
+            )
+        name, profile = found
+        return dict(profile), f"profile:{name}"
+
+    if os.environ.get("FALCON_CLIENT_ID") and os.environ.get("FALCON_CLIENT_SECRET"):
+        return {}, "environment"
+
+    found = auth.get_profile(None)
+    if found:
+        name, profile = found
+        return dict(profile), f"profile:{name}"
+    return {}, None
+
+
 def _make_client(args: argparse.Namespace):
-    return build_client(
-        base_url=args.base_url,
-        member_cid=args.member_cid,
+    creds, source = resolve_credentials(args)
+    client = build_client(
+        base_url=args.base_url or creds.get("base_url"),
+        member_cid=args.member_cid or creds.get("member_cid"),
         proxy=args.proxy,
         debug=args.debug,
+        client_id=creds.get("client_id"),
+        client_secret=creds.get("client_secret"),
     )
+    return client, source
 
 
 # --- commands ---------------------------------------------------------------
@@ -205,21 +237,137 @@ def cmd_call(args: argparse.Namespace) -> int:
             print("Aborted.", file=sys.stderr)
             return EXIT_USAGE
 
-    client = _make_client(args)
+    client, _source = _make_client(args)
     result = execute_tool(info.name, arguments, client)
     _print_json(result, compact=args.compact)
     return EXIT_OK
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    client = _make_client(args)  # raises AuthFailure if credentials are bad
+    client, source = _make_client(args)  # raises AuthFailure if credentials are bad
     _print_json(
         {
             "connected": True,
             "base_url": client.base_url,
             "member_cid": client.member_cid,
+            "credential_source": source,
         }
     )
+    return EXIT_OK
+
+
+def _mask(client_id: str) -> str:
+    return client_id[:6] + "…" if len(client_id) > 6 else "…"
+
+
+def cmd_login(args: argparse.Namespace) -> int:
+    profile_name = args.profile or "default"
+    validator = auth.make_falcon_validator()
+
+    if args.manual:
+        import getpass
+
+        print(f"Region: {args.region} ({auth.REGIONS[args.region]['api']})")
+        print(
+            "Create an API client in the Falcon console under Support and resources\n"
+            f"-> API clients and keys: {auth.REGIONS[args.region]['console']}/api-clients-and-keys"
+        )
+        client_id = input("Client ID: ").strip()
+        client_secret = getpass.getpass("Client secret: ").strip()
+        member_cid = input("Member CID (optional, MSSP only): ").strip() or None
+        candidate = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "base_url": auth.REGIONS[args.region]["api"],
+            "region": args.region,
+            "member_cid": member_cid,
+        }
+        error = validator(candidate)
+        if error:
+            print(f"error: {error}", file=sys.stderr)
+            return EXIT_AUTH
+        auth.save_profile(profile_name, candidate, make_default=args.set_default)
+        result = {"profile": profile_name, **candidate}
+    else:
+        result = auth.run_login_server(
+            validator,
+            region=args.region,
+            profile=profile_name,
+            port=args.port,
+            open_browser=not args.no_browser,
+            timeout=args.timeout,
+        )
+        if result is None:
+            print(
+                "error: login timed out before credentials were submitted. "
+                "Re-run `falcon-cli login`, or use `falcon-cli login --manual` "
+                "on machines without a browser.",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        if args.set_default:
+            store = auth.load_store()
+            store["default_profile"] = result["profile"]
+            auth.save_store(store)
+
+    store = auth.load_store()
+    _print_json(
+        {
+            "logged_in": True,
+            "profile": result["profile"],
+            "client_id": _mask(result["client_id"]),
+            "base_url": result["base_url"],
+            "member_cid": result.get("member_cid"),
+            "default_profile": store.get("default_profile"),
+            "stored_at": str(auth.credentials_path()),
+        }
+    )
+    return EXIT_OK
+
+
+def cmd_logout(args: argparse.Namespace) -> int:
+    if args.all:
+        path = auth.credentials_path()
+        existed = path.exists()
+        if existed:
+            path.unlink()
+        print(f"Removed all stored profiles{'' if existed else ' (none were stored)'}.")
+        return EXIT_OK
+
+    store = auth.load_store()
+    name = args.name or store.get("default_profile")
+    if not name:
+        raise UsageError("No stored profiles. Nothing to log out of.")
+    if not auth.delete_profile(name):
+        raise UsageError(
+            f"No stored profile named {name!r}. Run `falcon-cli profiles` to list them."
+        )
+    print(f"Removed profile {name!r}.")
+    return EXIT_OK
+
+
+def cmd_profiles(args: argparse.Namespace) -> int:
+    store = auth.load_store()
+    default = store.get("default_profile")
+    entries = [
+        {
+            "name": name,
+            "client_id": _mask(profile.get("client_id", "")),
+            "base_url": profile.get("base_url"),
+            "region": profile.get("region"),
+            "member_cid": profile.get("member_cid"),
+            "default": name == default,
+        }
+        for name, profile in sorted(store.get("profiles", {}).items())
+    ]
+    if args.json:
+        _print_json({"profiles": entries, "default_profile": default})
+    elif not entries:
+        print("No stored profiles. Run `falcon-cli login` to create one.")
+    else:
+        for e in entries:
+            marker = " (default)" if e["default"] else ""
+            print(f"{e['name']}{marker}  client_id={e['client_id']}  {e['base_url']}")
     return EXIT_OK
 
 
@@ -251,7 +399,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Command-line access to CrowdStrike Falcon via the falcon-mcp tool catalog. "
             "Catalog commands (tools, describe, guides, modules) need no credentials; "
-            "call and check require FALCON_CLIENT_ID and FALCON_CLIENT_SECRET."
+            "call and check use FALCON_CLIENT_ID/FALCON_CLIENT_SECRET or a profile "
+            "stored by `falcon-cli login`."
         ),
         epilog=(
             "Exit codes: 0 success, 1 tool reported an error, 2 usage/config error, "
@@ -275,8 +424,61 @@ def build_parser() -> argparse.ArgumentParser:
         help="HTTPS proxy URL for outbound Falcon API calls (env: FALCON_PROXY_URL)",
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="Use a stored credential profile from `falcon-cli login` "
+        "(env: FALCON_CLI_PROFILE; default: environment variables, then the default profile)",
+    )
 
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser(
+        "login",
+        help="Sign in via your browser and store a credential profile",
+        description=(
+            "Foundry-CLI-style login: starts a local callback server, opens your "
+            "browser to a form that links to the Falcon console's API clients page, "
+            "validates the credentials against the Falcon API, and stores them as a "
+            "named profile. Use --manual for a terminal-only flow on headless machines."
+        ),
+    )
+    p.add_argument(
+        "--region",
+        choices=sorted(auth.REGIONS),
+        default=auth.DEFAULT_REGION,
+        help=f"CrowdStrike region (default: {auth.DEFAULT_REGION})",
+    )
+    # SUPPRESS so this doesn't clobber the global --profile when omitted.
+    p.add_argument(
+        "--profile",
+        default=argparse.SUPPRESS,
+        help="Name for the stored profile (default: default)",
+    )
+    p.add_argument("--manual", action="store_true", help="Prompt in the terminal instead of the browser")
+    p.add_argument("--no-browser", action="store_true", help="Start the local form but don't auto-open a browser")
+    p.add_argument("--port", type=int, default=0, help="Local callback port (default: random)")
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=auth.LOGIN_TIMEOUT_SECONDS,
+        help="Seconds to wait for the browser submission (default: 600)",
+    )
+    p.add_argument(
+        "--set-default",
+        action="store_true",
+        help="Make this profile the default credential source",
+    )
+    p.set_defaults(func=cmd_login)
+
+    p = sub.add_parser("logout", help="Remove a stored credential profile")
+    p.add_argument("name", nargs="?", help="Profile to remove (default: the default profile)")
+    p.add_argument("--all", action="store_true", help="Remove every stored profile")
+    p.set_defaults(func=cmd_logout)
+
+    p = sub.add_parser("profiles", help="List stored credential profiles")
+    p.add_argument("--json", action="store_true", help="Emit JSON instead of plain text")
+    p.set_defaults(func=cmd_profiles)
 
     p = sub.add_parser("modules", help="List falcon-mcp modules (no credentials needed)")
     p.add_argument("--json", action="store_true", help="Emit JSON instead of plain text")
