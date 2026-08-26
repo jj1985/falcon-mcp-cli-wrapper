@@ -109,42 +109,37 @@ def test_resolution_nothing_stored():
 
 
 def _run_server_in_thread(validator, **kwargs):
+    """Start run_login_server on a thread; block until it reports its URL.
+
+    Uses the deterministic on_ready hook rather than scraping captured stderr,
+    which races with the server thread under fd-level capture.
+    """
     result_holder = {}
+    ready = threading.Event()
+
+    def on_ready(url):
+        result_holder["url"] = url
+        ready.set()
 
     def run():
         result_holder["result"] = auth.run_login_server(
-            validator, open_browser=False, timeout=10, **kwargs
+            validator, open_browser=False, timeout=10, on_ready=on_ready, **kwargs
         )
 
     thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    assert ready.wait(10), "server never reported readiness"
     return thread, result_holder
 
 
-def _extract_url(capfd) -> str:
-    err = capfd.readouterr().err
-    for word in err.split():
-        if word.startswith("http://127.0.0.1:"):
-            return word
-    raise AssertionError(f"no login URL printed: {err!r}")
-
-
-def test_login_server_full_flow(capfd):
+def test_login_server_full_flow():
     seen = {}
 
     def validator(candidate):
         seen.update(candidate)
 
     thread, holder = _run_server_in_thread(validator, profile="work")
-    thread.start()
-    # wait for the URL to be printed
-    url = None
-    for _ in range(100):
-        try:
-            url = _extract_url(capfd)
-            break
-        except AssertionError:
-            thread.join(0.05)
-    assert url, "server did not print its URL"
+    url = holder["url"]
     token = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["token"][0]
 
     # GET the form
@@ -193,20 +188,12 @@ def test_login_server_full_flow(capfd):
     assert stored[1]["region"] == "us-2"
 
 
-def test_login_server_validator_rejection_keeps_serving(capfd):
+def test_login_server_validator_rejection_keeps_serving():
     def validator(candidate):
         return "Bad credentials, try again"
 
-    thread, holder = _run_server_in_thread(validator, profile="default")
-    thread.start()
-    url = None
-    for _ in range(100):
-        try:
-            url = _extract_url(capfd)
-            break
-        except AssertionError:
-            thread.join(0.05)
-    assert url
+    _thread, holder = _run_server_in_thread(validator, profile="default")
+    url = holder["url"]
     token = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["token"][0]
     bare = url.split("?")[0]
 

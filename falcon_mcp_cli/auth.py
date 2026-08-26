@@ -315,10 +315,15 @@ def run_login_server(
     port: int = 0,
     open_browser: bool = True,
     timeout: float = LOGIN_TIMEOUT_SECONDS,
+    on_ready: Callable[[str], None] | None = None,
 ) -> dict[str, Any] | None:
     """Serve the login form on loopback until credentials are saved or timeout.
 
     Returns the saved profile dict (including its name) or None on timeout.
+
+    ``on_ready`` is called once with the bound login URL as soon as the server
+    is listening, before the browser is opened — a deterministic hook for
+    callers that need the URL (rather than scraping it from stderr).
     """
     handler = type(
         "BoundLoginHandler",
@@ -336,6 +341,8 @@ def run_login_server(
     server.timeout = 1.0
     url = f"http://127.0.0.1:{server.server_address[1]}/?token={handler.token}"
 
+    if on_ready is not None:
+        on_ready(url)
     print(f"Open this URL in your browser to sign in:\n\n  {url}\n", file=sys.stderr)
     if open_browser:
         import webbrowser
