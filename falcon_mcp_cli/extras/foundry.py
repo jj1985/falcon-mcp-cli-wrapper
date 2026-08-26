@@ -59,6 +59,18 @@ class FoundryModule(BaseModule):
             "delete_foundry_object",
             annotations=DESTRUCTIVE_ANNOTATIONS,
         )
+        self._add_tool(
+            server,
+            self.upload_foundry_lookup_file,
+            "upload_foundry_lookup_file",
+            annotations=WRITE_ANNOTATIONS,
+        )
+        self._add_tool(
+            server,
+            self.update_foundry_lookup_file,
+            "update_foundry_lookup_file",
+            annotations=WRITE_ANNOTATIONS,
+        )
         self._add_tool(server, self.list_foundry_repos, "list_foundry_repos")
         self._add_tool(server, self.run_foundry_search, "run_foundry_search")
         self._add_tool(server, self.get_foundry_search_results, "get_foundry_search_results")
@@ -213,6 +225,61 @@ class FoundryModule(BaseModule):
             operation="DeleteObject",
             error_message="Failed to delete Foundry object",
             default_result={"deleted": object_key},
+        )
+
+    # --- lookup files ---------------------------------------------------------
+
+    def upload_foundry_lookup_file(
+        self,
+        name: str = Field(description="Lookup file name, e.g. blocklist.csv."),
+        content: str = Field(
+            description=(
+                "The lookup file content (CSV text). From the shell: "
+                "content=\"$(cat file.csv)\"."
+            ),
+        ),
+        description: str | None = Field(default=None, description="File description."),
+        repo: str | None = Field(
+            default=None, description="Repository to associate the lookup file with."
+        ),
+    ) -> dict[str, Any] | list[Any]:
+        """Upload a new Foundry/LogScale lookup file.
+
+        Lookup files provide reference data (e.g. allow/blocklists) that saved
+        searches and Foundry apps join against with the `match()` function.
+        """
+        fields = {"name": name}
+        if description:
+            fields["description"] = description
+        if repo:
+            fields["repo"] = repo
+        response = self.client.command(
+            "CreateFileV1",
+            data=fields,
+            files=[("file", (name, content.encode()))],
+        )
+        return handle_api_response(
+            response, operation="CreateFileV1", error_message="Failed to upload lookup file"
+        )
+
+    def update_foundry_lookup_file(
+        self,
+        id: str = Field(description="Lookup file ID to update."),
+        content: str | None = Field(
+            default=None, description="New file content (CSV text), if replacing it."
+        ),
+        description: str | None = Field(default=None, description="New description."),
+    ) -> dict[str, Any] | list[Any]:
+        """Update an existing Foundry/LogScale lookup file's content or description."""
+        fields: dict[str, Any] = {"id": id}
+        if description:
+            fields["description"] = description
+        kwargs: dict[str, Any] = {"data": fields}
+        if content is not None:
+            kwargs["files"] = [("file", ("lookup_update", content.encode()))]
+        response = self.client.command("UpdateFileV1", **kwargs)
+        return handle_api_response(
+            response, operation="UpdateFileV1", error_message="Failed to update lookup file"
         )
 
     # --- LogScale search ------------------------------------------------------

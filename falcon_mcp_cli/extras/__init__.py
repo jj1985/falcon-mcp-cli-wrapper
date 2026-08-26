@@ -22,11 +22,13 @@ from falcon_mcp.modules.base import BaseModule
 def get_extra_modules() -> dict[str, type[BaseModule]]:
     """Extra modules by name. Imported lazily to keep CLI startup cheap."""
     from falcon_mcp_cli.extras.foundry import FoundryModule
+    from falcon_mcp_cli.extras.rtradmin import RtradminModule
     from falcon_mcp_cli.extras.workflows import WorkflowsModule
 
     return {
         "workflows": WorkflowsModule,
         "foundry": FoundryModule,
+        "rtradmin": RtradminModule,
     }
 
 

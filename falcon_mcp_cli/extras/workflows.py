@@ -65,6 +65,24 @@ class WorkflowsModule(BaseModule):
             "workflow_definition_action",
             annotations=DESTRUCTIVE_ANNOTATIONS,
         )
+        self._add_tool(
+            server,
+            self.provision_system_workflow,
+            "provision_system_workflow",
+            annotations=WRITE_ANNOTATIONS,
+        )
+        self._add_tool(
+            server,
+            self.promote_system_workflow,
+            "promote_system_workflow",
+            annotations=WRITE_ANNOTATIONS,
+        )
+        self._add_tool(
+            server,
+            self.deprovision_system_workflow,
+            "deprovision_system_workflow",
+            annotations=DESTRUCTIVE_ANNOTATIONS,
+        )
         self._add_tool(server, self.search_workflow_activities, "search_workflow_activities")
         self._add_tool(
             server,
@@ -326,6 +344,90 @@ class WorkflowsModule(BaseModule):
         if self._is_error(results):
             return results
         return self._build_pagination_envelope(results or [], pagination, filter)
+
+    # --- system definitions (workflow templates used by apps/integrations) ---
+
+    def provision_system_workflow(
+        self,
+        template: dict[str, Any] = Field(
+            description=(
+                "Provisioning payload: {'name': <template name>, 'template_id': "
+                "..., 'parameters': {activities/trigger/conditions "
+                "configuration}} — the customization values the template "
+                "declares. Pass with --input for anything non-trivial."
+            ),
+        ),
+    ) -> dict[str, Any]:
+        """Provision a system workflow definition (template) onto the tenant.
+
+        System definitions are the workflow templates apps and integrations
+        ship; provisioning instantiates one on the CID with the supplied
+        parameters, and the resulting workflow may become active immediately.
+        Undo with `falcon_deprovision_system_workflow`.
+        """
+        response = self.client.command("WorkflowSystemDefinitionsProvision", body=template)
+        return handle_api_response(
+            response,
+            operation="WorkflowSystemDefinitionsProvision",
+            error_message="Failed to provision system workflow definition",
+        )
+
+    def promote_system_workflow(
+        self,
+        template: dict[str, Any] = Field(
+            description=(
+                "Promotion payload: {'name': ..., 'template_version': ..., "
+                "'customer_definition_id': <required for multi-instance "
+                "templates>, 'parameters': {...}} — all parameters must be "
+                "supplied, as this applies the updated template version in full."
+            ),
+        ),
+    ) -> dict[str, Any]:
+        """Promote a provisioned system workflow definition to a new template version.
+
+        The tenant must already be provisioned with the template. Supply the
+        full parameter set — promotion replaces the configuration wholesale.
+        """
+        response = self.client.command("WorkflowSystemDefinitionsPromote", body=template)
+        return handle_api_response(
+            response,
+            operation="WorkflowSystemDefinitionsPromote",
+            error_message="Failed to promote system workflow definition",
+        )
+
+    def deprovision_system_workflow(
+        self,
+        definition_id: str | None = Field(
+            default=None, description="Provisioned definition ID to remove."
+        ),
+        template_id: str | None = Field(default=None, description="Template ID."),
+        template_name: str | None = Field(default=None, description="Template name."),
+        deprovision_all: bool = Field(
+            default=False,
+            description="Remove every definition provisioned from the template.",
+        ),
+    ) -> dict[str, Any]:
+        """Deprovision a system workflow definition previously provisioned on the tenant.
+
+        Removes the provisioned workflow(s); this cannot be undone short of
+        re-provisioning from the template.
+        """
+        body = {
+            key: value
+            for key, value in {
+                "definition_id": definition_id,
+                "template_id": template_id,
+                "template_name": template_name,
+                "deprovision_all": deprovision_all,
+            }.items()
+            if value not in (None, False)
+        }
+        response = self.client.command("WorkflowSystemDefinitionsDeProvision", body=body)
+        return handle_api_response(
+            response,
+            operation="WorkflowSystemDefinitionsDeProvision",
+            error_message="Failed to deprovision system workflow definition",
+        )
 
     # --- executions -----------------------------------------------------------
 

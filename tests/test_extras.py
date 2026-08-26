@@ -195,6 +195,127 @@ def test_workflow_api_error_maps_to_exit_error():
     assert "error" in json.dumps(exc.value.result)
 
 
+# --- system workflow definitions ---------------------------------------------
+
+
+def test_provision_system_workflow():
+    stub = StubClient()
+    template = {"name": "T", "template_id": "t1", "parameters": {}}
+    core.execute_tool("falcon_provision_system_workflow", {"template": template}, stub)
+    op, kwargs = stub.calls[0]
+    assert op == "WorkflowSystemDefinitionsProvision"
+    assert kwargs["body"] == template
+
+
+def test_deprovision_system_workflow_prunes_falsey():
+    stub = StubClient()
+    core.execute_tool(
+        "falcon_deprovision_system_workflow",
+        {"definition_id": "d1", "deprovision_all": False},
+        stub,
+    )
+    op, kwargs = stub.calls[0]
+    assert op == "WorkflowSystemDefinitionsDeProvision"
+    # deprovision_all=False and the unset template fields are pruned
+    assert kwargs["body"] == {"definition_id": "d1"}
+
+
+# --- foundry lookup files ----------------------------------------------------
+
+
+def test_upload_foundry_lookup_file_multipart():
+    stub = StubClient()
+    core.execute_tool(
+        "falcon_upload_foundry_lookup_file",
+        {"name": "block.csv", "content": "a,b\n1,2", "repo": "myrepo"},
+        stub,
+    )
+    op, kwargs = stub.calls[0]
+    assert op == "CreateFileV1"
+    assert kwargs["data"] == {"name": "block.csv", "repo": "myrepo"}
+    field, (fname, content) = kwargs["files"][0]
+    assert field == "file"
+    assert fname == "block.csv"
+    assert content == b"a,b\n1,2"
+
+
+def test_update_foundry_lookup_file_without_content_sends_no_file():
+    stub = StubClient()
+    core.execute_tool(
+        "falcon_update_foundry_lookup_file",
+        {"id": "f1", "description": "updated"},
+        stub,
+    )
+    op, kwargs = stub.calls[0]
+    assert op == "UpdateFileV1"
+    assert kwargs["data"] == {"id": "f1", "description": "updated"}
+    assert "files" not in kwargs
+
+
+# --- RTR admin content -------------------------------------------------------
+
+
+def test_create_rtr_script_formdata():
+    stub = StubClient()
+    core.execute_tool(
+        "falcon_create_rtr_script",
+        {
+            "name": "cleanup",
+            "content": "Write-Host hi",
+            "description": "test",
+            "permission_type": "group",
+            "platform": "windows",
+        },
+        stub,
+    )
+    op, kwargs = stub.calls[0]
+    assert op == "RTR_CreateScripts"
+    assert kwargs["data"]["name"] == "cleanup"
+    assert kwargs["data"]["permission_type"] == "group"
+    assert kwargs["data"]["content"] == "Write-Host hi"
+
+
+def test_update_rtr_script_prunes_unset():
+    stub = StubClient()
+    core.execute_tool(
+        "falcon_update_rtr_script", {"id": "s1", "description": "new desc"}, stub
+    )
+    op, kwargs = stub.calls[0]
+    assert op == "RTR_UpdateScripts"
+    assert kwargs["data"] == {"id": "s1", "description": "new desc"}
+
+
+def test_create_rtr_put_file_multipart():
+    stub = StubClient()
+    core.execute_tool(
+        "falcon_create_rtr_put_file",
+        {"name": "tool.exe", "content": "MZ...", "description": "helper"},
+        stub,
+    )
+    op, kwargs = stub.calls[0]
+    assert op == "RTR_CreatePut_Files"
+    assert kwargs["data"] == {"name": "tool.exe", "description": "helper"}
+    field, (fname, content) = kwargs["files"][0]
+    assert field == "file" and fname == "tool.exe" and content == b"MZ..."
+
+
+def test_rtr_admin_module_in_catalog():
+    catalog = core.Catalog()
+    modules = {t.module for t in catalog.tools()}
+    assert "rtradmin" in modules
+    assert catalog.tool("falcon_delete_rtr_script").destructive is True
+    assert catalog.tool("falcon_list_rtr_scripts").read_only is True
+
+
+def test_rtradmin_does_not_shadow_upstream_rtr():
+    # upstream ships an `rtr` module; ours is `rtradmin`, so upstream rtr tools
+    # still resolve to rtr.
+    merged = extras.merged_tool_module_map()
+    rtr_tools = {t for t, m in merged.items() if m == "rtr"}
+    assert rtr_tools, "upstream rtr tools missing"
+    assert all(t.startswith("falcon_") for t in rtr_tools)
+
+
 # --- foundry module ----------------------------------------------------------
 
 
