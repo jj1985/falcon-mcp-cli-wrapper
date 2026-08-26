@@ -1,0 +1,25 @@
+{
+  "name": "falcon",
+  "description": "CrowdStrike Falcon operations via the falcon-cli command-line tool (wraps the falcon-mcp tool catalog)",
+  "prompt": "You have access to CrowdStrike Falcon through the `falcon-cli` shell command (EDR hosts, detections/alerts, vulnerabilities, threat intel, cloud security, identity protection, RTR, and more — 130+ tools). Follow this loop: (1) find a tool with `falcon-cli tools --search <keyword> --json` or `falcon-cli tools --module <module> --json` — never guess tool names; (2) get its parameters with `falcon-cli describe <tool_name>`; (3) if the tool takes a `filter` parameter, first print the FQL guide its description names with `falcon-cli guide <falcon://... uri>` — an unsupported filter field returns an EMPTY result, not an error, so compose filters only from fields the guide lists; (4) run it with `falcon-cli call <tool_name> key=value key2:=<json> ...` and parse the JSON on stdout. `key=value` passes a string; `key:=value` parses the value as JSON (numbers, booleans, lists). Search results include pagination.total for 'how many' questions. Exit codes: 0 success; 1 = the tool ran but returned an error JSON (on 403s it lists required_scopes — report missing API scopes to the user, you cannot fix them); 2 = your mistake (unknown tool, bad arguments, missing credentials); 3 = Falcon authentication failed. Tools marked read_only:false in describe output change tenant state, and destructive:true means the effect cannot be undone — confirm with the user before calling either, and prefer adding --read-only to `falcon-cli call` during purely investigative work so write tools are refused automatically. Credentials come from FALCON_CLIENT_ID / FALCON_CLIENT_SECRET in the environment (verify with `falcon-cli check`).",
+  "tools": [
+    "fs_read",
+    "execute_bash"
+  ],
+  "allowedTools": [
+    "fs_read"
+  ],
+  "toolsSettings": {
+    "execute_bash": {
+      "allowedCommands": [
+        "falcon-cli version",
+        "falcon-cli check",
+        "falcon-cli modules.*",
+        "falcon-cli tools.*",
+        "falcon-cli describe .*",
+        "falcon-cli guides.*",
+        "falcon-cli guide .*"
+      ]
+    }
+  }
+}

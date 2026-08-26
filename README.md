@@ -17,10 +17,20 @@ It works by importing `falcon-mcp` as a Python library and driving its module re
 
 ## Installation
 
-Requires Python 3.11+.
+Requires Python 3.11+ (or [uv](https://docs.astral.sh/uv/), which provisions one automatically).
+
+**Quick install (recommended):**
 
 ```bash
-# Recommended: isolated install with uv or pipx
+curl -fsSL https://raw.githubusercontent.com/jj1985/falcon-mcp-cli-wrapper/main/install.sh | bash
+```
+
+The script picks the best available installer (uv → pipx → `pip install --user`), verifies the install, and — when [Kiro CLI](https://kiro.dev/docs/cli/) is detected — also sets up the `falcon` Kiro agent (skip with `--no-kiro`, force with `--kiro`; `--uninstall` removes everything; `--help` for all options).
+
+**Manual install:**
+
+```bash
+# Isolated install with uv or pipx
 uv tool install git+https://github.com/jj1985/falcon-mcp-cli-wrapper.git
 # or
 pipx install git+https://github.com/jj1985/falcon-mcp-cli-wrapper.git
@@ -179,6 +189,15 @@ $ falcon-cli call falcon_search_hosts filter="platform_name:'Windows'+last_seen:
 | `falcon-cli version` | no | Wrapper + upstream package versions |
 
 Global options (before the subcommand): `--base-url`, `--member-cid`, `--proxy`, `--debug`.
+
+## Kiro integration
+
+This repo ships a [Kiro](https://kiro.dev) integration under [`integrations/kiro/`](integrations/kiro/):
+
+- **Kiro CLI:** a custom agent (`falcon`) that knows the discover → describe → guide → call workflow. Catalog commands run without confirmation prompts; every `falcon-cli call` requires your runtime approval. Installed automatically by `install.sh` when Kiro is detected, then: `kiro-cli chat --agent falcon`.
+- **Kiro IDE:** copy `AGENTS.md` to `.kiro/steering/falcon-cli.md` in your workspace to make any Kiro session falcon-cli-aware.
+
+See [integrations/kiro/README.md](integrations/kiro/README.md) for details. (Claude Code and other AGENTS.md-aware agents need no setup — they pick up [AGENTS.md](AGENTS.md)/[CLAUDE.md](CLAUDE.md) automatically.)
 
 ## How it relates to upstream falcon-mcp
 
