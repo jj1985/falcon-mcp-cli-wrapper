@@ -20,7 +20,6 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from falcon_mcp import registry
 from falcon_mcp.client import FalconClient
 from mcp.server.fastmcp import FastMCP
 
@@ -73,7 +72,9 @@ class Catalog:
     """Credential-free view of every tool and guide falcon-mcp provides."""
 
     def __init__(self, modules: list[str] | None = None):
-        available = registry.get_available_modules()
+        from falcon_mcp_cli.extras import merged_available_modules
+
+        available = merged_available_modules()
         if modules:
             unknown = sorted(set(modules) - set(available))
             if unknown:
@@ -223,13 +224,15 @@ def execute_tool(
     Only the module that owns ``tool_name`` is instantiated, mirroring what the
     MCP server would execute for a tools/call request.
     """
-    tool_map = registry.get_tool_module_map()
+    from falcon_mcp_cli.extras import merged_available_modules, merged_tool_module_map
+
+    tool_map = merged_tool_module_map()
     module_name = tool_map.get(tool_name)
     if module_name is None:
         raise UsageError(unknown_tool_message(tool_name, list(tool_map)))
 
     server = FastMCP("falcon-cli-exec")
-    module_class = registry.get_available_modules()[module_name]
+    module_class = merged_available_modules()[module_name]
     instance = module_class(client)
     instance.register_tools(server)
     if hasattr(instance, "register_resources"):

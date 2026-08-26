@@ -140,9 +140,9 @@ def _make_client(args: argparse.Namespace):
 
 
 def cmd_modules(args: argparse.Namespace) -> int:
-    from falcon_mcp import registry
+    from falcon_mcp_cli.extras import merged_available_modules
 
-    names = sorted(registry.get_module_names())
+    names = sorted(merged_available_modules())
     if args.json:
         _print_json({"modules": names, "total": len(names)})
     else:
