@@ -128,6 +128,33 @@ def test_search_workflow_activities_envelope():
     assert result["pagination"]["total"] == 1
 
 
+def test_workflow_definition_action_enable_disable():
+    stub = StubClient()
+    core.execute_tool(
+        "falcon_workflow_definition_action",
+        {"action_name": "disable", "ids": ["d1"]},
+        stub,
+    )
+    op, kwargs = stub.calls[0]
+    assert op == "WorkflowDefinitionsAction"
+    assert kwargs["parameters"] == {"action_name": "disable"}
+    assert kwargs["body"] == {"ids": ["d1"]}
+
+
+def test_search_workflow_activity_content_envelope():
+    stub = StubClient(
+        {
+            "WorkflowActivitiesContentCombined": {
+                "status_code": 200,
+                "body": {"resources": [{"name": "act"}], "meta": {"pagination": {"total": 1}}},
+            }
+        }
+    )
+    result = core.execute_tool("falcon_search_workflow_activity_content", {"limit": 5}, stub)
+    assert result["results"][0]["name"] == "act"
+    assert result["pagination"]["total"] == 1
+
+
 def test_workflow_execution_action():
     stub = StubClient()
     core.execute_tool(

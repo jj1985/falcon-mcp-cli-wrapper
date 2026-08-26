@@ -59,7 +59,18 @@ class WorkflowsModule(BaseModule):
             "delete_workflow",
             annotations=DESTRUCTIVE_ANNOTATIONS,
         )
+        self._add_tool(
+            server,
+            self.workflow_definition_action,
+            "workflow_definition_action",
+            annotations=DESTRUCTIVE_ANNOTATIONS,
+        )
         self._add_tool(server, self.search_workflow_activities, "search_workflow_activities")
+        self._add_tool(
+            server,
+            self.search_workflow_activity_content,
+            "search_workflow_activity_content",
+        )
         self._add_tool(server, self.search_workflow_triggers, "search_workflow_triggers")
         self._add_tool(
             server,
@@ -206,6 +217,35 @@ class WorkflowsModule(BaseModule):
             default_result={"deleted": ids},
         )
 
+    def workflow_definition_action(
+        self,
+        action_name: str = Field(
+            description=(
+                "Action to perform: enable (workflow starts firing on its "
+                "trigger events), disable (stops reacting to new trigger "
+                "events), or cancel (stop all in-flight executions)."
+            ),
+        ),
+        ids: list[str] = Field(description="Workflow definition IDs to act on."),
+    ) -> dict[str, Any]:
+        """Enable, disable, or cancel Fusion SOAR workflow definitions.
+
+        Enabling puts real automation live; cancel irreversibly stops the
+        definition's in-flight executions. Disable/enable are each other's
+        undo. Find definition IDs with `falcon_search_workflow_definitions`
+        (its records include the current `enabled` state).
+        """
+        response = self.client.command(
+            "WorkflowDefinitionsAction",
+            body={"ids": ids},
+            parameters={"action_name": action_name},
+        )
+        return handle_api_response(
+            response,
+            operation="WorkflowDefinitionsAction",
+            error_message="Failed to perform workflow definition action",
+        )
+
     # --- building blocks: activities ("functions") and triggers --------------
 
     def search_workflow_activities(
@@ -233,6 +273,32 @@ class WorkflowsModule(BaseModule):
             operation="WorkflowActivitiesCombined",
             search_params={"filter": filter, "limit": limit, "offset": offset, "sort": sort},
             error_message="Failed to search workflow activities",
+        )
+        if self._is_error(results):
+            return results
+        return self._build_pagination_envelope(results or [], pagination, filter)
+
+    def search_workflow_activity_content(
+        self,
+        filter: str | None = Field(
+            default=None, description="FQL filter over activity content records."
+        ),
+        limit: int = Field(default=20, ge=1, le=500, description="Max records. [1-500]"),
+        offset: int | None = Field(default=None, description="Pagination offset."),
+        sort: str | None = Field(default=None, description="Sort expression."),
+    ) -> dict[str, Any]:
+        """Search full Fusion SOAR activity content records.
+
+        Richer than `falcon_search_workflow_activities`: returns the complete
+        content model for each activity (full input/output field definitions),
+        which is what a definition's action nodes must conform to when building
+        or editing workflow models by hand.
+        Responses include `pagination.total` — use it to answer "how many" questions.
+        """
+        results, pagination = self._base_search_with_meta(
+            operation="WorkflowActivitiesContentCombined",
+            search_params={"filter": filter, "limit": limit, "offset": offset, "sort": sort},
+            error_message="Failed to search workflow activity content",
         )
         if self._is_error(results):
             return results

@@ -240,8 +240,9 @@ $ falcon-cli call falcon_export_workflow id=<definition-id> | jq -r .yaml > wf.y
 $ falcon-cli call falcon_import_workflow yaml="$(cat wf.yaml)" name="Containment v2" validate_only:=true
 $ falcon-cli call falcon_import_workflow yaml="$(cat wf.yaml)" name="Containment v2"
 
-# Modify in place (full-model update), or delete
+# Modify in place (full-model update), enable/disable/cancel, or delete
 $ falcon-cli call falcon_update_workflow --input @definition.json
+$ falcon-cli call falcon_workflow_definition_action action_name=disable ids:='["<definition-id>"]'
 $ falcon-cli call falcon_delete_workflow ids:='["<definition-id>"]'
 
 # The building blocks: activities (the "functions" a workflow can call —
